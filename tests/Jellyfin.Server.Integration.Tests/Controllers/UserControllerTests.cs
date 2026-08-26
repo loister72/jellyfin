@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Jellyfin.Api.Models.UserDtos;
 using Jellyfin.Extensions.Json;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Model.Dto;
 using Xunit;
 using Xunit.v3.Priority;
@@ -21,6 +22,7 @@ namespace Jellyfin.Server.Integration.Tests.Controllers
         private readonly JellyfinApplicationFactory _factory;
         private readonly JsonSerializerOptions _jsonOptions = JsonDefaults.Options;
         private static string? _accessToken;
+        private static Guid _adminUserId = Guid.Empty;
         private static Guid _testUserId = Guid.Empty;
 
         public UserControllerTests(JellyfinApplicationFactory factory)
@@ -33,6 +35,26 @@ namespace Jellyfin.Server.Integration.Tests.Controllers
 
         private Task<HttpResponseMessage> UpdateUserPassword(HttpClient httpClient, Guid userId, UpdateUserPassword request)
             => httpClient.PostAsJsonAsync("Users/" + userId.ToString("N", CultureInfo.InvariantCulture) + "/Password", request, _jsonOptions);
+
+        private async Task<string> AuthenticateByName(HttpClient client, string username, string password)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "Users/AuthenticateByName");
+            request.Headers.TryAddWithoutValidation(AuthHelper.AuthHeaderName, AuthHelper.DummyAuthHeader);
+            request.Content = JsonContent.Create(
+                new AuthenticateUserByName()
+                {
+                    Username = username,
+                    Pw = password
+                },
+                options: _jsonOptions);
+
+            using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var auth = await response.Content.ReadFromJsonAsync<AuthenticationResult>(_jsonOptions, TestContext.Current.CancellationToken);
+            Assert.NotNull(auth);
+            return auth.AccessToken;
+        }
 
         [Fact]
         [Priority(-1)]
@@ -60,6 +82,7 @@ namespace Jellyfin.Server.Integration.Tests.Controllers
             var users = await response.Content.ReadFromJsonAsync<UserDto[]>(_jsonOptions, TestContext.Current.CancellationToken);
             Assert.NotNull(users);
             Assert.Single(users);
+            _adminUserId = users[0].Id;
         }
 
         [Fact]
@@ -83,7 +106,8 @@ namespace Jellyfin.Server.Integration.Tests.Controllers
 
             var createRequest = new CreateUserByName()
             {
-                Name = TestUsername
+                Name = TestUsername,
+                Password = "4randomPa$$word"
             };
 
             using var response = await CreateUserByName(client, createRequest);
@@ -94,6 +118,39 @@ namespace Jellyfin.Server.Integration.Tests.Controllers
             _testUserId = user.Id;
 
             Console.WriteLine(user.Id.ToString("N", CultureInfo.InvariantCulture));
+        }
+
+        [Fact]
+        [Priority(1)]
+        public async Task GetUsers_NonAdmin_Forbidden()
+        {
+            var client = _factory.CreateClient();
+            client.DefaultRequestHeaders.AddAuthHeader(await AuthenticateByName(client, TestUsername, "4randomPa$$word"));
+
+            using var response = await client.GetAsync("Users", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        [Fact]
+        [Priority(1)]
+        public async Task GetUserById_NonAdminOwnUser_Success()
+        {
+            var client = _factory.CreateClient();
+            client.DefaultRequestHeaders.AddAuthHeader(await AuthenticateByName(client, TestUsername, "4randomPa$$word"));
+
+            using var response = await client.GetAsync("Users/" + _testUserId, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        [Fact]
+        [Priority(1)]
+        public async Task GetUserById_NonAdminOtherUser_Forbidden()
+        {
+            var client = _factory.CreateClient();
+            client.DefaultRequestHeaders.AddAuthHeader(await AuthenticateByName(client, TestUsername, "4randomPa$$word"));
+
+            using var response = await client.GetAsync("Users/" + _adminUserId, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
 
         [Theory]
