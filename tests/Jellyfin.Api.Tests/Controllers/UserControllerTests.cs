@@ -109,6 +109,42 @@ public class UserControllerTests
             v.ErrorMessage.Contains("required", StringComparison.CurrentCultureIgnoreCase));
     }
 
+    [Fact]
+    public void UpdateUserPolicy_WhenBlockedTagContainsDelimiter_ReturnsBadRequest()
+    {
+        var userPolicy = CreateValidUserPolicy();
+        userPolicy.BlockedTags = ["violence,gore"];
+
+        Assert.Contains(Validate(userPolicy), v =>
+            v.MemberNames.Contains(nameof(UserPolicy.BlockedTags)) &&
+            v.ErrorMessage is not null &&
+            v.ErrorMessage.Contains("commas", StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    [Fact]
+    public void UpdateUserPolicy_WhenAllowedTagContainsDelimiter_ReturnsBadRequest()
+    {
+        var userPolicy = CreateValidUserPolicy();
+        userPolicy.AllowedTags = ["family,kids"];
+
+        Assert.Contains(Validate(userPolicy), v =>
+            v.MemberNames.Contains(nameof(UserPolicy.AllowedTags)) &&
+            v.ErrorMessage is not null &&
+            v.ErrorMessage.Contains("commas", StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    [Fact]
+    public void UpdateUserPolicy_WhenPolicyTagsDoNotContainDelimiter_Validates()
+    {
+        var userPolicy = CreateValidUserPolicy();
+        userPolicy.BlockedTags = ["violence", "gore"];
+        userPolicy.AllowedTags = ["family", "kids"];
+
+        Assert.DoesNotContain(Validate(userPolicy), v =>
+            v.MemberNames.Contains(nameof(UserPolicy.BlockedTags))
+            || v.MemberNames.Contains(nameof(UserPolicy.AllowedTags)));
+    }
+
     private List<ValidationResult> Validate(object model)
     {
         var result = new List<ValidationResult>();
@@ -116,5 +152,14 @@ public class UserControllerTests
         Validator.TryValidateObject(model, context, result, true);
 
         return result;
+    }
+
+    private static UserPolicy CreateValidUserPolicy()
+    {
+        return new UserPolicy
+        {
+            AuthenticationProviderId = "AuthenticationProviderId",
+            PasswordResetProviderId = "PasswordResetProviderId"
+        };
     }
 }
