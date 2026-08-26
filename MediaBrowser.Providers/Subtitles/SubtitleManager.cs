@@ -194,16 +194,9 @@ namespace MediaBrowser.Providers.Subtitles
         {
             var saveInMediaFolder = libraryOptions.SaveSubtitlesWithMedia;
 
-            var memoryStream = new MemoryStream();
-            await using (memoryStream.ConfigureAwait(false))
+            var stream = response.Stream;
+            await using (stream.ConfigureAwait(false))
             {
-                var stream = response.Stream;
-                await using (stream.ConfigureAwait(false))
-                {
-                    await stream.CopyToAsync(memoryStream).ConfigureAwait(false);
-                    memoryStream.Position = 0;
-                }
-
                 var savePaths = new List<string>();
                 var language = response.Language.ToLowerInvariant();
                 if (language.AsSpan().IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) >= 0)
@@ -234,7 +227,7 @@ namespace MediaBrowser.Providers.Subtitles
                     savePaths.Add(internalPath);
                 }
 
-                await TrySaveToFiles(memoryStream, savePaths, video, response.Format.ToLowerInvariant()).ConfigureAwait(false);
+                await TrySaveToFiles(stream, savePaths, video, response.Format.ToLowerInvariant()).ConfigureAwait(false);
             }
         }
 
@@ -252,10 +245,8 @@ namespace MediaBrowser.Providers.Subtitles
                 var path = Path.GetFullPath(savePath + "." + extension);
                 try
                 {
-                    var containingFolder = video.ContainingFolderPath + Path.DirectorySeparatorChar;
-                    var metadataFolder = video.GetInternalMetadataPath() + Path.DirectorySeparatorChar;
-                    if (path.StartsWith(containingFolder, StringComparison.Ordinal)
-                            || path.StartsWith(metadataFolder, StringComparison.Ordinal))
+                    var saveDirectory = Path.GetDirectoryName(Path.GetFullPath(savePath)) ?? throw new InvalidOperationException("Path can't be a root directory.");
+                    if (PathHelper.IsContainedIn(saveDirectory, path))
                     {
                         var fileExists = File.Exists(path);
                         var counter = 0;
@@ -270,15 +261,39 @@ namespace MediaBrowser.Providers.Subtitles
                         _logger.LogInformation("Saving subtitles to {SavePath}", path);
                         _monitor.ReportFileSystemChangeBeginning(path);
 
-                        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? throw new InvalidOperationException("Path can't be a root directory."));
+                        Directory.CreateDirectory(saveDirectory);
+                        var tempPath = path + "." + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".tmp";
 
                         var fileOptions = AsyncFile.WriteOptions;
                         fileOptions.Mode = FileMode.CreateNew;
-                        fileOptions.PreallocationSize = stream.Length;
-                        var fs = new FileStream(path, fileOptions);
-                        await using (fs.ConfigureAwait(false))
+                        if (stream.CanSeek)
                         {
-                            await stream.CopyToAsync(fs).ConfigureAwait(false);
+                            fileOptions.PreallocationSize = stream.Length;
+                        }
+
+                        try
+                        {
+                            var fs = new FileStream(tempPath, fileOptions);
+                            await using (fs.ConfigureAwait(false))
+                            {
+                                await stream.CopyToAsync(fs).ConfigureAwait(false);
+                            }
+
+                            File.Move(tempPath, path);
+                        }
+                        finally
+                        {
+                            if (File.Exists(tempPath))
+                            {
+                                try
+                                {
+                                    File.Delete(tempPath);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to delete temporary subtitle file {TempPath}", tempPath);
+                                }
+                            }
                         }
 
                         return;
@@ -298,7 +313,10 @@ namespace MediaBrowser.Providers.Subtitles
                     _monitor.ReportFileSystemChangeComplete(path, false);
                 }
 
-                stream.Position = 0;
+                if (stream.CanSeek)
+                {
+                    stream.Position = 0;
+                }
             }
 
             if (exs is not null)
