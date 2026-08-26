@@ -71,24 +71,6 @@ namespace MediaBrowser.Controller.MediaEncoding
         private readonly Version _minFixedKernel60i915Hang = new Version(6, 0, 18);
         private readonly Version _minKernelVersionAmdVkFmtModifier = new Version(5, 15);
 
-        private readonly Version _minFFmpegImplicitHwaccel = new Version(6, 0);
-        private readonly Version _minFFmpegHwaUnsafeOutput = new Version(6, 0);
-        private readonly Version _minFFmpegOclCuTonemapMode = new Version(5, 1, 3);
-        private readonly Version _minFFmpegSvtAv1Params = new Version(5, 1);
-        private readonly Version _minFFmpegVaapiH26xEncA53CcSei = new Version(6, 0);
-        private readonly Version _minFFmpegReadrateOption = new Version(5, 0);
-        private readonly Version _minFFmpegWorkingVtHwSurface = new Version(7, 0, 1);
-        private readonly Version _minFFmpegDisplayRotationOption = new Version(6, 0);
-        private readonly Version _minFFmpegAdvancedTonemapMode = new Version(7, 0, 1);
-        private readonly Version _minFFmpegAlteredVaVkInterop = new Version(7, 0, 1);
-        private readonly Version _minFFmpegQsvVppTonemapOption = new Version(7, 0, 1);
-        private readonly Version _minFFmpegQsvVppOutRangeOption = new Version(7, 0, 1);
-        private readonly Version _minFFmpegVaapiDeviceVendorId = new Version(7, 0, 1);
-        private readonly Version _minFFmpegQsvVppScaleModeOption = new Version(6, 0);
-        private readonly Version _minFFmpegRkmppHevcDecDoviRpu = new Version(7, 1, 1);
-        private readonly Version _minFFmpegReadrateCatchupOption = new Version(8, 0);
-        private readonly Version _minFFmpegNoiseBsfDrop = new Version(5, 0);
-
         private static readonly string[] _videoProfilesH264 =
         [
             "ConstrainedBaseline",
@@ -372,7 +354,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
                 var isRkmppDecoder = vidDecoder.Contains("rkmpp", StringComparison.OrdinalIgnoreCase);
                 if (isRkmppDecoder
-                    && _mediaEncoder.EncoderVersion >= _minFFmpegRkmppHevcDecDoviRpu
+                    && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.RkmppHevcDecDoviRpu
                     && string.Equals(state.VideoStream?.Codec, "hevc", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
@@ -416,7 +398,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             // 'vpp_qsv' requires VPL, which is only supported on Gen12/TGLx and newer.
             if (OperatingSystem.IsWindows()
                 && options.HardwareAccelerationType == HardwareAccelerationType.qsv
-                && _mediaEncoder.EncoderVersion < _minFFmpegQsvVppTonemapOption)
+                && _mediaEncoder.EncoderVersion < FfmpegFeatureVersions.QsvVppTonemapOption)
             {
                 return false;
             }
@@ -911,7 +893,7 @@ namespace MediaBrowser.Controller.MediaEncoding
         {
             alias ??= VaapiAlias;
             var haveVendorId = !string.IsNullOrEmpty(vendorId)
-                && _mediaEncoder.EncoderVersion >= _minFFmpegVaapiDeviceVendorId;
+                && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.VaapiDeviceVendorId;
 
             // Priority: 'renderNodePath' > 'vendorId' > 'kernelDriver'
             var driverOpts = File.Exists(renderNodePath)
@@ -1595,7 +1577,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 || IsCopyCodec(state.OutputVideoCodec)
                 || !IsCopyCodec(state.OutputAudioCodec)
                 || string.Equals(state.InputContainer, "wtv", StringComparison.OrdinalIgnoreCase)
-                || _mediaEncoder.EncoderVersion < _minFFmpegNoiseBsfDrop)
+                || _mediaEncoder.EncoderVersion < FfmpegFeatureVersions.NoiseBsfDrop)
             {
                 return null;
             }
@@ -2380,7 +2362,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             }
 
             if (string.Equals(videoEncoder, "libsvtav1", StringComparison.OrdinalIgnoreCase)
-                && _mediaEncoder.EncoderVersion >= _minFFmpegSvtAv1Params)
+                && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.SvtAv1Params)
             {
                 param += " -svtav1-params:0 rc=1:tune=0:film-grain=0:enable-overlays=1:enable-tf=0";
             }
@@ -2388,7 +2370,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             /* Access unit too large: 8192 < 20880 error */
             if ((string.Equals(videoEncoder, "h264_vaapi", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(videoEncoder, "hevc_vaapi", StringComparison.OrdinalIgnoreCase)) &&
-                 _mediaEncoder.EncoderVersion >= _minFFmpegVaapiH26xEncA53CcSei)
+                 _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.VaapiH26xEncA53CcSei)
             {
                 param += " -sei -a53_cc";
             }
@@ -3734,10 +3716,10 @@ namespace MediaBrowser.Controller.MediaEncoding
             {
                 args = "tonemap_{0}=format={1}:p=bt709:t=bt709:m=bt709:tonemap={2}:peak={3}:desat={4}";
 
-                var useLegacyTonemapModes = _mediaEncoder.EncoderVersion >= _minFFmpegOclCuTonemapMode
+                var useLegacyTonemapModes = _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.OclCuTonemapMode
                                            && _legacyTonemapModes.Contains(options.TonemappingMode);
 
-                var useAdvancedTonemapModes = _mediaEncoder.EncoderVersion >= _minFFmpegAdvancedTonemapMode
+                var useAdvancedTonemapModes = _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.AdvancedTonemapMode
                                               && _advancedTonemapModes.Contains(options.TonemappingMode);
 
                 if (useLegacyTonemapModes || useAdvancedTonemapModes)
@@ -4536,9 +4518,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var isRext = IsVideoStreamHevcRext(state);
                 var twoPassVppTonemap = false;
                 var doVppFullRangeOut = isMjpegEncoder
-                    && _mediaEncoder.EncoderVersion >= _minFFmpegQsvVppOutRangeOption;
+                    && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.QsvVppOutRangeOption;
                 var doVppScaleModeHq = isMjpegEncoder
-                    && _mediaEncoder.EncoderVersion >= _minFFmpegQsvVppScaleModeOption;
+                    && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.QsvVppScaleModeOption;
                 var doVppProcamp = false;
                 var procampParams = string.Empty;
                 var procampParamsString = string.Empty;
@@ -4828,9 +4810,9 @@ namespace MediaBrowser.Controller.MediaEncoding
                 var hwFilterSuffix = isVaapiDecoder ? "vaapi" : "qsv";
                 var isRext = IsVideoStreamHevcRext(state);
                 var doVppFullRangeOut = isMjpegEncoder
-                    && _mediaEncoder.EncoderVersion >= _minFFmpegQsvVppOutRangeOption;
+                    && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.QsvVppOutRangeOption;
                 var doVppScaleModeHq = isMjpegEncoder
-                    && _mediaEncoder.EncoderVersion >= _minFFmpegQsvVppScaleModeOption;
+                    && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.QsvVppScaleModeOption;
 
                 // INPUT vaapi/qsv surface(vram)
                 // hw deint
@@ -5383,7 +5365,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 if (doVkTranspose || doVkTonemap || hasSubs)
                 {
                     // map from vaapi to vulkan/drm via interop (Polaris/gfx8+).
-                    if (_mediaEncoder.EncoderVersion >= _minFFmpegAlteredVaVkInterop)
+                    if (_mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.AlteredVaVkInterop)
                     {
                         if (doVkTranspose || !_mediaEncoder.IsVaapiDeviceSupportVulkanDrmModifier)
                         {
@@ -5803,7 +5785,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var doDeintH2645 = IsDeinterlaceAvailable(state);
             var doVtTonemap = IsVideoToolboxTonemapAvailable(state, options);
             var doMetalTonemap = !doVtTonemap && IsHwTonemapAvailable(state, options);
-            var usingHwSurface = isVtDecoder && (_mediaEncoder.EncoderVersion >= _minFFmpegWorkingVtHwSurface);
+            var usingHwSurface = isVtDecoder && (_mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.WorkingVtHwSurface);
 
             var rotation = state.VideoStream?.Rotation ?? 0;
             var transposeDir = rotation == 0 ? string.Empty : GetVideoTransposeDirection(state);
@@ -6601,7 +6583,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var ffmpegVersion = _mediaEncoder.EncoderVersion;
 
             // Set the av1 codec explicitly to trigger hw accelerator, otherwise libdav1d will be used.
-            var isAv1 = ffmpegVersion < _minFFmpegImplicitHwaccel
+            var isAv1 = ffmpegVersion < FfmpegFeatureVersions.ImplicitHwaccel
                 && string.Equals(videoCodec, "av1", StringComparison.OrdinalIgnoreCase);
 
             // Allow profile mismatch if decoding H.264 baseline with d3d11va and vaapi hwaccels.
@@ -6609,11 +6591,11 @@ namespace MediaBrowser.Controller.MediaEncoding
                 && string.Equals(state.VideoStream?.Profile, "baseline", StringComparison.OrdinalIgnoreCase);
 
             // Disable the extra internal copy in nvdec. We already handle it in filter chain.
-            var nvdecNoInternalCopy = ffmpegVersion >= _minFFmpegHwaUnsafeOutput;
+            var nvdecNoInternalCopy = ffmpegVersion >= FfmpegFeatureVersions.HwaUnsafeOutput;
 
             // Strip the display rotation side data from the transposed fmp4 output stream.
             var stripRotationData = (state.VideoStream?.Rotation ?? 0) != 0
-                && ffmpegVersion >= _minFFmpegDisplayRotationOption;
+                && ffmpegVersion >= FfmpegFeatureVersions.DisplayRotationOption;
             var stripRotationDataArgs = stripRotationData ? " -display_rotation 0" : string.Empty;
 
             // VideoToolbox decoders have built-in SW fallback
@@ -7044,7 +7026,7 @@ namespace MediaBrowser.Controller.MediaEncoding
             var isAv1SupportedSwFormatsVt = is8_10bitSwFormatsVt || string.Equals("yuv420p12le", videoStream.PixelFormat, StringComparison.OrdinalIgnoreCase);
 
             // The related patches make videotoolbox hardware surface working is only available in jellyfin-ffmpeg 7.0.1 at the moment.
-            bool useHwSurface = (_mediaEncoder.EncoderVersion >= _minFFmpegWorkingVtHwSurface) && IsVideoToolboxFullSupported();
+            bool useHwSurface = (_mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.WorkingVtHwSurface) && IsVideoToolboxFullSupported();
 
             if (is8bitSwFormatsVt)
             {
@@ -7353,7 +7335,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 && state.VideoStream is not null
                 && state.TranscodingType == TranscodingJobType.Hls
                 && IsCopyCodec(state.OutputVideoCodec)
-                && _mediaEncoder.EncoderVersion >= _minFFmpegReadrateOption)
+                && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.ReadrateOption)
             {
                 // Set an input read rate limit 10x for using SegmentDeletion with stream-copy
                 // to prevent ffmpeg from exiting prematurely (due to fast drive)
@@ -7363,7 +7345,7 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             // Set a larger catchup value to revert to the old behavior,
             // otherwise, remuxing might stall due to this new option
-            if (readrate > 0 && _mediaEncoder.EncoderVersion >= _minFFmpegReadrateCatchupOption)
+            if (readrate > 0 && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.ReadrateCatchupOption)
             {
                 inputModifier += $" -readrate_catchup {readrate * 100}";
             }
