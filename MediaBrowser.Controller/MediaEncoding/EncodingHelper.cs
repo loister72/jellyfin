@@ -7325,30 +7325,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 inputModifier += GetVideoSyncOption(state.InputVideoSync, _mediaEncoder.EncoderVersion);
             }
 
-            int readrate = 0;
-            if (state.ReadInputAtNativeFramerate && state.InputProtocol != MediaProtocol.Rtsp)
-            {
-                readrate = 1;
-                inputModifier += " -re";
-            }
-            else if (encodingOptions.EnableSegmentDeletion
-                && state.VideoStream is not null
-                && state.TranscodingType == TranscodingJobType.Hls
-                && IsCopyCodec(state.OutputVideoCodec)
-                && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.ReadrateOption)
-            {
-                // Set an input read rate limit 10x for using SegmentDeletion with stream-copy
-                // to prevent ffmpeg from exiting prematurely (due to fast drive)
-                readrate = 10;
-                inputModifier += $" -readrate {readrate}";
-            }
-
-            // Set a larger catchup value to revert to the old behavior,
-            // otherwise, remuxing might stall due to this new option
-            if (readrate > 0 && _mediaEncoder.EncoderVersion >= FfmpegFeatureVersions.ReadrateCatchupOption)
-            {
-                inputModifier += $" -readrate_catchup {readrate * 100}";
-            }
+            inputModifier += FfmpegReadRatePolicy.GetInputReadRateArguments(state, encodingOptions, _mediaEncoder.EncoderVersion);
 
             var flags = new List<string>();
             if (state.IgnoreInputDts)
