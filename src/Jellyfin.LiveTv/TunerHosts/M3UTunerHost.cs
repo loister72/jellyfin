@@ -189,6 +189,8 @@ namespace Jellyfin.LiveTv.TunerHosts
                 RequiresOpening = true,
                 RequiresClosing = true,
                 RequiresLooping = info.EnableStreamLooping,
+                BufferMs = 0,
+                Container = GetContainerFromPath(path),
 
                 ReadAtNativeFramerate = info.ReadAtNativeFramerate,
 
@@ -208,6 +210,27 @@ namespace Jellyfin.LiveTv.TunerHosts
             mediaSource.InferTotalBitrate();
 
             return mediaSource;
+        }
+
+        internal static string GetContainerFromPath(string path)
+        {
+            if (!Uri.TryCreate(path, UriKind.Absolute, out var uri))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(uri.AbsolutePath);
+            if (string.IsNullOrEmpty(extension))
+            {
+                return null;
+            }
+
+            return extension.ToLowerInvariant() switch
+            {
+                ".m3u" or ".m3u8" => "m3u8",
+                ".m2t" or ".mpegts" or ".ts" or ".tsv" => "ts",
+                _ => null
+            };
         }
 
         public Task<List<TunerHostInfo>> DiscoverDevices(int discoveryDurationMs, CancellationToken cancellationToken)
