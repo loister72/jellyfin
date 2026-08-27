@@ -87,10 +87,12 @@ public class UserController : BaseJellyfinApiController
     /// <param name="isHidden">Optional filter by IsHidden=true or false.</param>
     /// <param name="isDisabled">Optional filter by IsDisabled=true or false.</param>
     /// <response code="200">Users returned.</response>
+    /// <response code="403">User does not have permission to list users.</response>
     /// <returns>An <see cref="IEnumerable{UserDto}"/> containing the users.</returns>
     [HttpGet]
-    [Authorize]
+    [Authorize(Policy = Policies.RequiresElevation)]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public ActionResult<IEnumerable<UserDto>> GetUsers(
         [FromQuery] bool? isHidden,
         [FromQuery] bool? isDisabled)
@@ -122,14 +124,17 @@ public class UserController : BaseJellyfinApiController
     /// </summary>
     /// <param name="userId">The user id.</param>
     /// <response code="200">User returned.</response>
+    /// <response code="403">User does not have permission to access the requested user.</response>
     /// <response code="404">User not found.</response>
     /// <returns>An <see cref="UserDto"/> with information about the user or a <see cref="NotFoundResult"/> if the user was not found.</returns>
     [HttpGet("{userId}")]
     [Authorize(Policy = Policies.IgnoreParentalControl)]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public ActionResult<UserDto> GetUserById([FromRoute, Required] Guid userId)
     {
+        userId = RequestHelpers.GetUserId(User, userId);
         var user = _userManager.GetUserById(userId);
 
         if (user is null)

@@ -10,9 +10,6 @@ namespace MediaBrowser.Controller.MediaEncoding;
 
 public static class FfmpegReadRatePolicy
 {
-    private static readonly Version _minReadrateOption = new(5, 0);
-    private static readonly Version _minReadrateCatchupOption = new(8, 0);
-
     public static string GetInputReadRateArguments(EncodingJobInfo state, EncodingOptions encodingOptions, Version ffmpegVersion)
     {
         var readRate = GetInputReadRate(state, encodingOptions, ffmpegVersion);
@@ -40,7 +37,7 @@ public static class FfmpegReadRatePolicy
             && state.VideoStream is not null
             && state.TranscodingType == TranscodingJobType.Hls
             && EncodingHelper.IsCopyCodec(state.OutputVideoCodec)
-            && ffmpegVersion >= _minReadrateOption)
+            && ffmpegVersion >= FfmpegFeatureVersions.ReadrateOption)
         {
             // Limit HLS stream-copy reads so ffmpeg does not race ahead and exit before deleted segments are consumed.
             return 10;
@@ -51,7 +48,7 @@ public static class FfmpegReadRatePolicy
 
     private static string GetCatchupArgument(string arguments, int readRate, Version ffmpegVersion)
     {
-        if (ffmpegVersion < _minReadrateCatchupOption)
+        if (ffmpegVersion < FfmpegFeatureVersions.ReadrateCatchupOption)
         {
             return arguments;
         }

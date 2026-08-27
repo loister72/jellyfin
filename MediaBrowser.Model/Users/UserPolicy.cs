@@ -2,8 +2,10 @@
 #pragma warning disable CS1591, CA1819
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Xml.Serialization;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
@@ -11,7 +13,7 @@ using AccessSchedule = Jellyfin.Database.Implementations.Entities.AccessSchedule
 
 namespace MediaBrowser.Model.Users
 {
-    public class UserPolicy
+    public class UserPolicy : IValidatableObject
     {
         public UserPolicy()
         {
@@ -195,5 +197,36 @@ namespace MediaBrowser.Model.Users
         /// </summary>
         /// <value>Access level to SyncPlay features.</value>
         public SyncPlayUserAccessType SyncPlayAccess { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            foreach (var validationResult in ValidateTags(BlockedTags, nameof(BlockedTags)))
+            {
+                yield return validationResult;
+            }
+
+            foreach (var validationResult in ValidateTags(AllowedTags, nameof(AllowedTags)))
+            {
+                yield return validationResult;
+            }
+        }
+
+        private static IEnumerable<ValidationResult> ValidateTags(string[] tags, string memberName)
+        {
+            if (tags is null)
+            {
+                yield break;
+            }
+
+            foreach (var tag in tags.Where(i => i is not null))
+            {
+                if (tag.Contains(',', StringComparison.Ordinal))
+                {
+                    yield return new ValidationResult(
+                        "Tag policy values cannot contain commas.",
+                        [memberName]);
+                }
+            }
+        }
     }
 }

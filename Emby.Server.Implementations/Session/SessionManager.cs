@@ -1338,8 +1338,19 @@ namespace Emby.Server.Implementations.Session
             CheckDisposed();
 
             var session = GetSessionToRemoteControl(sessionId);
+            User controllingUser = null;
 
-            var user = session.UserId.IsEmpty() ? null : _userManager.GetUserById(session.UserId);
+            if (!string.IsNullOrEmpty(controllingSessionId))
+            {
+                var controllingSession = GetSession(controllingSessionId);
+                controllingUser = AssertCanControl(session, controllingSession);
+                if (!controllingSession.UserId.IsEmpty())
+                {
+                    command.ControllingUserId = controllingSession.UserId;
+                }
+            }
+
+            var user = session.UserId.IsEmpty() ? controllingUser : _userManager.GetUserById(session.UserId);
 
             List<BaseItem> items;
 
@@ -1402,16 +1413,6 @@ namespace Emby.Server.Implementations.Session
                     {
                         command.ItemIds = episodes.Select(i => i.Id).ToArray();
                     }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(controllingSessionId))
-            {
-                var controllingSession = GetSession(controllingSessionId);
-                AssertCanControl(session, controllingSession);
-                if (!controllingSession.UserId.IsEmpty())
-                {
-                    command.ControllingUserId = controllingSession.UserId;
                 }
             }
 
@@ -1537,11 +1538,62 @@ namespace Emby.Server.Implementations.Session
             return SendMessageToSession(session, SessionMessageType.Playstate, command, cancellationToken);
         }
 
-        private static void AssertCanControl(SessionInfo session, SessionInfo controllingSession)
+        private User AssertCanControl(SessionInfo session, SessionInfo controllingSession)
         {
             ArgumentNullException.ThrowIfNull(session);
 
             ArgumentNullException.ThrowIfNull(controllingSession);
+
+            if (!session.SupportsRemoteControl)
+            {
+                throw new SecurityException("Session does not support remote control.");
+            }
+
+            if (string.Equals(session.Id, controllingSession.Id, StringComparison.Ordinal))
+            {
+                return controllingSession.UserId.IsEmpty() ? null : _userManager.GetUserById(controllingSession.UserId);
+            }
+
+            if (controllingSession.UserId.IsEmpty())
+            {
+                throw new SecurityException("Anonymous sessions cannot control other sessions.");
+            }
+
+            var controllingUser = _userManager.GetUserById(controllingSession.UserId);
+            if (controllingUser is null)
+            {
+                throw new SecurityException("Controlling user was not found.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(session.DeviceId)
+                && !_deviceManager.CanAccessDevice(controllingUser, session.DeviceId))
+            {
+                throw new SecurityException("User is not allowed access to the target device.");
+            }
+
+            if (session.ContainsUser(controllingSession.UserId))
+            {
+                return controllingUser;
+            }
+
+            if (!controllingUser.HasPermission(PermissionKind.EnableRemoteControlOfOtherUsers))
+            {
+                throw new SecurityException("User is not permitted to control other users.");
+            }
+
+            if (session.UserId.IsEmpty())
+            {
+                return controllingUser;
+            }
+
+            var controlledUser = _userManager.GetUserById(session.UserId);
+            if (controlledUser is null
+                || !controlledUser.HasPermission(PermissionKind.EnableSharedDeviceControl))
+            {
+                throw new SecurityException("Target user does not allow shared device control.");
+            }
+
+            return controllingUser;
         }
 
         /// <summary>
