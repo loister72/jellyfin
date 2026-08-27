@@ -410,6 +410,30 @@ namespace Jellyfin.Model.Tests
             Assert.Null(query["SubtitleMethod"]);
         }
 
+        [Fact]
+        public async Task GetOptimalVideoStream_MultipleSourcesPrefersUnderLimitBitrateOverCloserOverLimit()
+        {
+            var overLimitSource = await TestData<MediaSourceInfo>("mp4-h264-ac3-aac-srt-2600k");
+            overLimitSource.Id = "over-limit-source";
+            overLimitSource.Name = "Over limit 4K version";
+            overLimitSource.Bitrate = 45_000_000;
+
+            var underLimitSource = await TestData<MediaSourceInfo>("mp4-h264-ac3-aac-srt-2600k");
+            underLimitSource.Id = "under-limit-source";
+            underLimitSource.Name = "Under limit HD version";
+            underLimitSource.Bitrate = 8_000_000;
+
+            var options = await GetMediaOptions("Chrome", "mp4-h264-ac3-aac-srt-2600k");
+            options.MediaSourceId = null;
+            options.MediaSources = [overLimitSource, underLimitSource];
+            options.MaxBitrate = 40_000_000;
+
+            var streamInfo = GetStreamBuilder().GetOptimalVideoStream(options);
+
+            Assert.NotNull(streamInfo);
+            Assert.Equal("under-limit-source", streamInfo.MediaSourceId);
+        }
+
         private StreamInfo? BuildVideoItemSimpleTest(MediaOptions options, PlayMethod? playMethod, TranscodeReason why, string transcodeMode, string transcodeProtocol)
         {
             if (string.IsNullOrEmpty(transcodeProtocol))

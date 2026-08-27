@@ -290,16 +290,31 @@ namespace MediaBrowser.Model.Dlna
                 }
             }).ThenBy(i =>
             {
-                if (maxBitrate > 0)
-                {
-                    if (i.MediaSource?.Bitrate is not null)
-                    {
-                        return Math.Abs(i.MediaSource.Bitrate.Value - maxBitrate);
-                    }
-                }
-
-                return 0;
+                return GetBitrateFitRank(i.MediaSource?.Bitrate, maxBitrate);
+            }).ThenBy(i =>
+            {
+                return GetBitrateDistance(i.MediaSource?.Bitrate, maxBitrate);
             }).ThenBy(streams.IndexOf);
+        }
+
+        private static int GetBitrateFitRank(int? bitrate, long maxBitrate)
+        {
+            if (maxBitrate <= 0 || bitrate is null)
+            {
+                return 1;
+            }
+
+            return bitrate.Value <= maxBitrate ? 0 : 2;
+        }
+
+        private static long GetBitrateDistance(int? bitrate, long maxBitrate)
+        {
+            if (maxBitrate <= 0 || bitrate is null)
+            {
+                return 0;
+            }
+
+            return Math.Abs(bitrate.Value - maxBitrate);
         }
 
         private static TranscodeReason GetTranscodeReasonForFailedCondition(ProfileCondition condition)
