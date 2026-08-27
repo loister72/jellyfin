@@ -9,3 +9,10 @@ deployment/*/dist
 deployment/*/pkg-dist
 deployment/collect-dist/
 ci/
+.github
+**/bin
+**/obj
+**/.vs
+**/.vscode
+artifacts
+TestResults
