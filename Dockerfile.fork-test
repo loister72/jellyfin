@@ -20,6 +20,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /app /app
 COPY jellyfin-web /web
+COPY deployment/fork-test/web-config.json /web/config.json
 
 EXPOSE 8096
 
